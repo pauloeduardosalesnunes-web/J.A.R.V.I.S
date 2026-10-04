@@ -1,0 +1,1388 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>J.A.R.V.I.S. // Painel de Comando</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #020b14;
+            --bg-gradient: radial-gradient(circle at center, #041421 0%, #01050a 100%);
+            --color-cyan: #00e5ff;
+            --color-cyan-dim: rgba(0, 229, 255, 0.3);
+            --color-blue: #00b8ff;
+            --color-blue-dark: rgba(0, 184, 255, 0.1);
+            --color-amber: #ffb300;
+            --color-green: #00ffaa;
+            --color-red: #ff3366;
+            --font-title: 'Orbitron', sans-serif;
+            --font-data: 'Share Tech Mono', monospace;
+            --border-glow: 0 0 10px rgba(0, 229, 255, 0.5), inset 0 0 10px rgba(0, 229, 255, 0.2);
+            --border-alert: 0 0 10px rgba(255, 179, 0, 0.5), inset 0 0 10px rgba(255, 179, 0, 0.2);
+            --panel-bg: rgba(2, 11, 20, 0.75);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg-gradient);
+            color: var(--color-cyan);
+            font-family: var(--font-data);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            user-select: none;
+        }
+
+        /* Scanlines and Vignette overlay */
+        .overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 999;
+            background: 
+                linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%),
+                radial-gradient(circle, rgba(0,0,0,0) 50%, rgba(0,0,0,0.6) 100%);
+            background-size: 100% 4px, 100% 100%;
+            opacity: 0.8;
+        }
+
+        /* Boot screen */
+        #boot-screen {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #000;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 1s ease-out;
+        }
+        #boot-log {
+            color: var(--color-cyan);
+            font-size: 1.2rem;
+            text-align: left;
+            width: 80%;
+            max-width: 600px;
+            white-space: pre-wrap;
+        }
+
+        .hud-container {
+            width: 98vw;
+            height: 96vh;
+            display: grid;
+            grid-template-columns: 250px 1fr 300px;
+            gap: 15px;
+            padding: 15px;
+            opacity: 0;
+            transform: scale(0.98);
+            transition: all 1.5s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .hud-container.active {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--color-cyan-dim);
+            border-radius: 5px;
+            box-shadow: var(--border-glow);
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            backdrop-filter: blur(5px);
+            overflow: hidden;
+            clip-path: polygon(15px 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%, 0 15px);
+        }
+        
+        .panel::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0;
+            border-top: 2px solid var(--color-cyan);
+            border-left: 2px solid var(--color-cyan);
+            width: 20px; height: 20px;
+        }
+        .panel::after {
+            content: '';
+            position: absolute;
+            bottom: 0; right: 0;
+            border-bottom: 2px solid var(--color-cyan);
+            border-right: 2px solid var(--color-cyan);
+            width: 20px; height: 20px;
+        }
+
+        .panel-header {
+            font-family: var(--font-title);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            border-bottom: 1px solid var(--color-cyan-dim);
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+            color: var(--color-blue);
+        }
+
+        .left-col { display: flex; flex-direction: column; gap: 15px; }
+        
+        .clock-container { text-align: center; margin-bottom: 15px; }
+        .time { font-family: var(--font-title); font-size: 2.5rem; font-weight: 700; text-shadow: 0 0 10px var(--color-cyan); }
+        .date { font-size: 0.8rem; text-transform: uppercase; color: var(--color-blue); }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .metric-item {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+        }
+        .metric-canvas { width: 80px; height: 80px; }
+        .metric-label { font-size: 0.7rem; margin-top: 5px; }
+
+        .status-list { list-style: none; font-size: 0.8rem; }
+        .status-list li { margin-bottom: 5px; display: flex; justify-content: space-between; }
+        .status-value.ok { color: var(--color-green); }
+        
+        .mini-chart { width: 100%; height: 80px; border-bottom: 1px solid var(--color-cyan-dim); margin-top: auto;}
+
+        .center-col { display: flex; flex-direction: column; gap: 15px; }
+        
+        .reactor-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        #reactor-canvas {
+            width: 300px;
+            height: 300px;
+            max-width: 100%;
+            max-height: 100%;
+        }
+        .reactor-status {
+            font-family: var(--font-title);
+            font-size: 1.2rem;
+            letter-spacing: 3px;
+            margin-top: 20px;
+            text-shadow: 0 0 8px var(--color-cyan);
+            transition: color 0.3s;
+        }
+
+        .controls-row {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 10px;
+        }
+        button {
+            background: var(--color-blue-dark);
+            border: 1px solid var(--color-cyan);
+            color: var(--color-cyan);
+            font-family: var(--font-title);
+            padding: 10px 20px;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-size: 0.9rem;
+            clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+            transition: all 0.2s;
+        }
+        button:hover {
+            background: var(--color-cyan-dim);
+            box-shadow: 0 0 15px var(--color-cyan);
+            color: #fff;
+        }
+        button.active-btn {
+            background: rgba(255, 51, 102, 0.2);
+            border-color: var(--color-red);
+            color: var(--color-red);
+            box-shadow: 0 0 15px var(--color-red);
+            animation: pulse-btn 1.5s infinite;
+        }
+        @keyframes pulse-btn {
+            0% { box-shadow: 0 0 5px var(--color-red); }
+            50% { box-shadow: 0 0 20px var(--color-red); }
+            100% { box-shadow: 0 0 5px var(--color-red); }
+        }
+
+        .terminal-container {
+            height: 250px;
+            display: flex;
+            flex-direction: column;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--color-cyan-dim);
+        }
+        .terminal-output {
+            flex: 1;
+            padding: 10px;
+            overflow-y: auto;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .terminal-output::-webkit-scrollbar { width: 5px; }
+        .terminal-output::-webkit-scrollbar-thumb { background: var(--color-cyan-dim); }
+
+        .log-user { color: var(--color-green); }
+        .log-jarvis { color: var(--color-cyan); }
+        .log-sys { color: var(--color-amber); font-size: 0.8rem; }
+        
+        .cursor { display: inline-block; width: 8px; height: 15px; background: var(--color-cyan); animation: blink 1s step-end infinite; vertical-align: middle; }
+        @keyframes blink { 50% { opacity: 0; } }
+
+        .terminal-input-wrapper {
+            display: flex;
+            border-top: 1px solid var(--color-cyan-dim);
+            padding: 5px;
+        }
+        .terminal-input-wrapper span { padding: 5px; color: var(--color-blue); }
+        #cmd-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--color-cyan);
+            font-family: var(--font-data);
+            font-size: 1rem;
+            outline: none;
+            padding: 5px;
+        }
+
+        /* Settings Panel (Collapsible) */
+        .settings-panel {
+            background: rgba(0,0,0,0.8);
+            border: 1px solid var(--color-cyan);
+            position: absolute;
+            bottom: 60px; left: 50%;
+            transform: translateX(-50%);
+            padding: 15px;
+            z-index: 100;
+            display: none;
+            width: 320px;
+            clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+        }
+        .settings-panel.open { display: block; }
+        .setting-row { margin-bottom: 10px; display: flex; flex-direction: column; gap: 5px; }
+        .setting-row label { font-size: 0.8rem; color: var(--color-blue); }
+        select, input[type="range"] { background: var(--bg-color); color: var(--color-cyan); border: 1px solid var(--color-cyan-dim); font-family: var(--font-data); padding: 5px; outline: none; }
+        input[type="range"] { -webkit-appearance: none; height: 4px; background: var(--color-cyan-dim); }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: var(--color-cyan); cursor: pointer; }
+
+        .right-col { display: flex; flex-direction: column; gap: 15px; }
+        
+        .list-container {
+            flex: 1;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+        .list-container::-webkit-scrollbar { width: 3px; }
+        .list-container::-webkit-scrollbar-thumb { background: var(--color-cyan-dim); }
+
+        .list-item {
+            background: rgba(0, 184, 255, 0.05);
+            border-left: 3px solid var(--color-cyan);
+            padding: 8px 10px;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+            transition: background 0.3s;
+        }
+        .list-item.new-item { animation: flash 1s ease-out; }
+        @keyframes flash { 0% { background: var(--color-cyan); color: #000; } 100% { background: rgba(0, 184, 255, 0.05); } }
+        
+        .list-item.alert-item { border-left-color: var(--color-amber); background: rgba(255, 179, 0, 0.1); }
+        .list-item .item-title { font-weight: bold; color: #fff; margin-bottom: 3px; display: block;}
+        .list-item .item-meta { display: flex; justify-content: space-between; color: var(--color-blue); font-size: 0.75rem;}
+        
+        .priority-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+        .prio-high { background: var(--color-red); box-shadow: 0 0 5px var(--color-red); }
+        .prio-med { background: var(--color-amber); box-shadow: 0 0 5px var(--color-amber); }
+        .prio-low { background: var(--color-green); box-shadow: 0 0 5px var(--color-green); }
+
+        /* Status classes for styling JS manipulation */
+        .state-alert { --color-cyan: var(--color-amber); --color-blue: #ffcc00; --border-glow: var(--border-alert); }
+
+        @media (max-width: 900px) {
+            .hud-container {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto auto;
+                height: auto;
+                overflow-y: auto;
+                padding-bottom: 30px;
+            }
+            body { overflow: auto; }
+            .terminal-container { height: 200px; }
+            #reactor-canvas { width: 200px; height: 200px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="overlay"></div>
+
+    <!-- Boot Sequence Screen -->
+    <div id="boot-screen">
+        <div id="boot-log"></div>
+    </div>
+
+    <div class="hud-container" id="main-hud">
+        
+        <!-- Left Panel: Metrics -->
+        <div class="left-col">
+            <div class="panel">
+                <div class="clock-container">
+                    <div class="time" id="clock-time">00:00:00</div>
+                    <div class="date" id="clock-date">CARREGANDO...</div>
+                </div>
+                
+                <div class="metrics-grid">
+                    <div class="metric-item">
+                        <canvas id="canvas-cpu" class="metric-canvas"></canvas>
+                        <span class="metric-label">CPU</span>
+                    </div>
+                    <div class="metric-item">
+                        <canvas id="canvas-ram" class="metric-canvas"></canvas>
+                        <span class="metric-label">MEMÓRIA</span>
+                    </div>
+                </div>
+
+                <ul class="status-list">
+                    <li><span>NÚCLEO PRINCIPAL</span> <span class="status-value ok">ESTÁVEL</span></li>
+                    <li><span>ENERGIA ARC</span> <span class="status-value ok" id="power-val">98%</span></li>
+                    <li><span>REDE NEURAL</span> <span class="status-value ok">ONLINE</span></li>
+                    <li><span>LINK DE DADOS</span> <span class="status-value ok">SEGURO</span></li>
+                </ul>
+
+                <canvas id="canvas-history" class="mini-chart"></canvas>
+            </div>
+        </div>
+
+        <!-- Center Panel: Reactor & Terminal -->
+        <div class="center-col">
+            <div class="panel reactor-container" id="reactor-panel">
+                <canvas id="reactor-canvas"></canvas>
+                <div class="reactor-status" id="reactor-status-text">STANDBY</div>
+                
+                <div class="controls-row">
+                    <button id="btn-toggle-listen">Ativar Sistema</button>
+                    <button id="btn-settings">Voz ⚙️</button>
+                </div>
+
+                <div class="settings-panel" id="settings-panel">
+                    <div class="panel-header">Configuração de Voz</div>
+                    <div class="setting-row">
+                        <label>Sintetizador (Voz):</label>
+                        <select id="voice-select"><option>Carregando vozes...</option></select>
+                    </div>
+                    <div class="setting-row">
+                        <label>Tom (Pitch): <span id="pitch-val">0.55</span></label>
+                        <input type="range" id="voice-pitch" min="0" max="2" step="0.05" value="0.55">
+                    </div>
+                    <div class="setting-row">
+                        <label>Velocidade (Rate): <span id="rate-val">0.95</span></label>
+                        <input type="range" id="voice-rate" min="0.5" max="2" step="0.05" value="0.95">
+                    </div>
+                    <div class="controls-row" style="margin-top:10px">
+                        <button id="btn-test-voice" style="padding: 5px 10px; font-size:0.7rem;">Testar</button>
+                        <button id="btn-mute" style="padding: 5px 10px; font-size:0.7rem;">Mudo: OFF</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel terminal-container">
+                <div class="panel-header">Terminal de Comando</div>
+                <div class="terminal-output" id="terminal-output">
+                    <!-- Logs will appear here -->
+                </div>
+                <div class="terminal-input-wrapper">
+                    <span>></span>
+                    <input type="text" id="cmd-input" placeholder="Digite um comando ou fale..." autocomplete="off">
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Agenda & Tasks -->
+        <div class="right-col">
+            <div class="panel" style="flex: 1;">
+                <div class="panel-header">Agenda de Hoje</div>
+                <div class="list-container" id="agenda-list">
+                    <!-- Agenda items -->
+                </div>
+            </div>
+
+            <div class="panel" style="flex: 1;">
+                <div class="panel-header">Demandas Ativas</div>
+                <div class="list-container" id="demands-list">
+                    <!-- Demand items -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * J.A.R.V.I.S. Core Application
+         */
+
+        // --- GLOBAL STATE ---
+        const AppState = {
+            name: "Senhor",
+            isMuted: false,
+            voicePitch: 0.55,
+            voiceRate: 0.95,
+            selectedVoiceURI: null,
+            systemActive: false,
+            reactorState: 'STANDBY', // STANDBY, LISTENING, PROCESSING, SPEAKING, ALERT
+            commandHistory: [],
+            historyIndex: -1,
+            
+            // Mock Data
+            agenda: [
+                { id: 1, title: "Revisão de Layout UI/UX", time: "10:00", timestamp: new Date().setHours(10,0,0,0), notified: false },
+                { id: 2, title: "Reunião Cliente Alpha", time: "15:30", timestamp: new Date().setHours(15,30,0,0), notified: false }
+            ],
+            demands: [
+                { id: 1, title: "Finalizar logo Stark Ind.", deadline: "Hoje", priority: "high", status: "Em andamento" },
+                { id: 2, title: "Aprovar paleta de cores", deadline: "Amanhã", priority: "med", status: "Aguardando" },
+                { id: 3, title: "Organizar assets pasta base", deadline: "Sexta", priority: "low", status: "A fazer" }
+            ],
+            
+            metrics: { cpu: 20, ram: 45, history: Array(50).fill(20) },
+            
+            focusTimer: null,
+            focusEndTime: null
+        };
+
+        // --- DOM ELEMENTS ---
+        const UI = {
+            hud: document.getElementById('main-hud'),
+            bootScreen: document.getElementById('boot-screen'),
+            bootLog: document.getElementById('boot-log'),
+            clockTime: document.getElementById('clock-time'),
+            clockDate: document.getElementById('clock-date'),
+            reactorPanel: document.getElementById('reactor-panel'),
+            reactorStatus: document.getElementById('reactor-status-text'),
+            termOutput: document.getElementById('terminal-output'),
+            termInput: document.getElementById('cmd-input'),
+            btnToggleListen: document.getElementById('btn-toggle-listen'),
+            btnSettings: document.getElementById('btn-settings'),
+            settingsPanel: document.getElementById('settings-panel'),
+            agendaList: document.getElementById('agenda-list'),
+            demandsList: document.getElementById('demands-list'),
+            voiceSelect: document.getElementById('voice-select'),
+            canvasCPU: document.getElementById('canvas-cpu'),
+            canvasRAM: document.getElementById('canvas-ram'),
+            canvasHist: document.getElementById('canvas-history')
+        };
+
+        // --- TTS ENGINE ---
+        const TTS = {
+            synth: window.speechSynthesis,
+            voices: [],
+            isSpeaking: false,
+            
+            init() {
+                if (!this.synth) {
+                    Terminal.logSys("AVISO: Módulo de síntese de voz (TTS) não suportado pelo navegador.");
+                    return;
+                }
+                
+                // Fetch voices. Needs event listener for Chrome.
+                this.populateVoices();
+                if (this.synth.onvoiceschanged !== undefined) {
+                    this.synth.onvoiceschanged = () => this.populateVoices();
+                }
+
+                // UI bindings
+                UI.voiceSelect.addEventListener('change', (e) => {
+                    AppState.selectedVoiceURI = e.target.value;
+                });
+                document.getElementById('voice-pitch').addEventListener('input', (e) => {
+                    AppState.voicePitch = parseFloat(e.target.value);
+                    document.getElementById('pitch-val').innerText = e.target.value;
+                });
+                document.getElementById('voice-rate').addEventListener('input', (e) => {
+                    AppState.voiceRate = parseFloat(e.target.value);
+                    document.getElementById('rate-val').innerText = e.target.value;
+                });
+                document.getElementById('btn-mute').addEventListener('click', (e) => {
+                    AppState.isMuted = !AppState.isMuted;
+                    e.target.innerText = AppState.isMuted ? "Mudo: ON" : "Mudo: OFF";
+                    e.target.style.color = AppState.isMuted ? varColor('red') : varColor('cyan');
+                    if(AppState.isMuted) this.synth.cancel();
+                });
+                document.getElementById('btn-test-voice').addEventListener('click', () => {
+                    this.speak("Sistemas operacionais. À sua disposição, " + AppState.name + ".");
+                });
+            },
+
+            populateVoices() {
+                this.voices = this.synth.getVoices();
+                if (this.voices.length === 0) return;
+
+                UI.voiceSelect.innerHTML = '';
+                // Filter for Portuguese voices
+                const ptVoices = this.voices.filter(v => v.lang.startsWith('pt'));
+                
+                // Heuristic to find a male-sounding voice if possible
+                let preferredVoice = ptVoices.find(v => v.name.includes('Antonio') || v.name.includes('Felipe') || v.name.includes('Male'));
+                if (!preferredVoice && ptVoices.length > 0) preferredVoice = ptVoices[0]; // Fallback to first PT
+
+                ptVoices.forEach(voice => {
+                    const option = document.createElement('option');
+                    option.textContent = `${voice.name} (${voice.lang})`;
+                    option.value = voice.voiceURI;
+                    if (preferredVoice && voice.voiceURI === preferredVoice.voiceURI) {
+                        option.selected = true;
+                        AppState.selectedVoiceURI = voice.voiceURI;
+                    }
+                    UI.voiceSelect.appendChild(option);
+                });
+            },
+
+            preprocess(text) {
+                let processed = text.replace(/J\.A\.R\.V\.I\.S\./gi, "Járvis");
+                processed = processed.replace(/([0-9]+)h/g, "$1 horas");
+                processed = processed.replace(/UI\/UX/gi, "ú í ú xis");
+                // Remove emojis
+                processed = processed.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '');
+                return processed;
+            },
+
+            speak(text, callback) {
+                if (AppState.isMuted || !this.synth) {
+                    if (callback) setTimeout(callback, text.length * 50); // Simulate time
+                    return;
+                }
+
+                this.synth.cancel(); // Stop current speech
+                const cleanText = this.preprocess(text);
+                const utterance = new SpeechSynthesisUtterance(cleanText);
+
+                // Configure voice
+                if (AppState.selectedVoiceURI) {
+                    const voice = this.voices.find(v => v.voiceURI === AppState.selectedVoiceURI);
+                    if (voice) utterance.voice = voice;
+                }
+                
+                // Adjust pitch slightly down if it seems to be a female voice (Google usually is)
+                let finalPitch = AppState.voicePitch;
+                if (utterance.voice && utterance.voice.name.includes('Google')) {
+                    finalPitch = Math.max(0.1, finalPitch - 0.2); // make it deeper
+                }
+
+                utterance.pitch = finalPitch;
+                utterance.rate = AppState.voiceRate;
+                utterance.volume = 1;
+
+                utterance.onstart = () => {
+                    this.isSpeaking = true;
+                    // Pause listening so it doesn't hear itself
+                    if (VoiceRec.recognition && VoiceRec.isListening) {
+                        try { VoiceRec.recognition.stop(); } catch(e) {}
+                    }
+                    Reactor.setState('SPEAKING');
+                };
+
+                utterance.onboundary = (event) => {
+                    // Trigger a visual pulse on the reactor for each word
+                    Reactor.pulseAmount = 1.0; 
+                };
+
+                utterance.onend = () => {
+                    this.isSpeaking = false;
+                    if (callback) callback();
+                    
+                    // Resume listening if system is active
+                    setTimeout(() => {
+                        if (AppState.systemActive && !this.isSpeaking) {
+                            Reactor.setState('LISTENING');
+                            VoiceRec.start();
+                        } else if (!AppState.systemActive) {
+                            Reactor.setState('STANDBY');
+                        }
+                    }, 200);
+                };
+
+                utterance.onerror = (e) => {
+                    console.error("TTS Error:", e);
+                    this.isSpeaking = false;
+                    Reactor.setState(AppState.systemActive ? 'LISTENING' : 'STANDBY');
+                };
+
+                this.synth.speak(utterance);
+            }
+        };
+
+        // --- SPEECH RECOGNITION ENGINE ---
+        const VoiceRec = {
+            recognition: null,
+            isListening: false,
+            shouldListen: false,
+            restartTimer: null,
+
+            init() {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (!SpeechRecognition) {
+                    Terminal.logSys("AVISO: Reconhecimento de voz não suportado nativamente. Use a entrada de texto.");
+                    return;
+                }
+
+                this.recognition = new SpeechRecognition();
+                this.recognition.lang = 'pt-BR';
+                this.recognition.continuous = true;
+                this.recognition.interimResults = true;
+
+                this.recognition.onstart = () => {
+                    this.isListening = true;
+                    if (!TTS.isSpeaking) Reactor.setState('LISTENING');
+                };
+
+                this.recognition.onresult = (event) => {
+                    let interimTranscript = '';
+                    let finalTranscript = '';
+
+                    for (let i = event.resultIndex; i < event.results.length; ++i) {
+                        if (event.results[i].isFinal) {
+                            finalTranscript += event.results[i][0].transcript;
+                        } else {
+                            interimTranscript += event.results[i][0].transcript;
+                        }
+                    }
+
+                    if (finalTranscript) {
+                        const cmd = finalTranscript.trim();
+                        Terminal.logUser(cmd);
+                        Brain.process(cmd);
+                    }
+                    // Could show interim on terminal, but might be noisy. Keeping it clean.
+                };
+
+                this.recognition.onerror = (event) => {
+                    if (event.error === 'not-allowed') {
+                        this.shouldListen = false;
+                        AppState.systemActive = false;
+                        updateListenButton();
+                        Terminal.logSys("ERRO: Acesso ao microfone negado. Use a caixa de texto abaixo.");
+                        Reactor.setState('STANDBY');
+                    }
+                };
+
+                this.recognition.onend = () => {
+                    this.isListening = false;
+                    // Auto-restart if it should be listening and JARVIS isn't talking
+                    if (this.shouldListen && !TTS.isSpeaking) {
+                        clearTimeout(this.restartTimer);
+                        this.restartTimer = setTimeout(() => {
+                            this.start();
+                        }, 250); // Delay to prevent InvalidStateError
+                    }
+                };
+            },
+
+            start() {
+                this.shouldListen = true;
+                clearTimeout(this.restartTimer);
+                if (this.recognition && !this.isListening && !TTS.isSpeaking) {
+                    try { 
+                        this.recognition.start(); 
+                    } catch(e) {
+                        // Evita o erro InvalidStateError se a API já estiver iniciada
+                    }
+                }
+            },
+
+            stop() {
+                this.shouldListen = false;
+                clearTimeout(this.restartTimer);
+                if (this.recognition && this.isListening) {
+                    try {
+                        this.recognition.stop();
+                    } catch(e) {}
+                }
+            }
+        };
+
+        // --- UI & TERMINAL CONTROLLER ---
+        const Terminal = {
+            logSys(msg) { this.printLine(`[SYS] ${msg}`, 'log-sys'); },
+            logUser(msg) { this.printLine(`> VOCÊ: ${msg}`, 'log-user'); },
+            logJarvis(msg) { 
+                // Typing effect for JARVIS responses
+                const div = document.createElement('div');
+                div.className = 'log-jarvis';
+                const prefix = document.createElement('span');
+                prefix.textContent = '> JARVIS: ';
+                const textSpan = document.createElement('span');
+                
+                div.appendChild(prefix);
+                div.appendChild(textSpan);
+                UI.termOutput.appendChild(div);
+                
+                this.typeText(textSpan, msg, 0);
+                this.scrollToBottom();
+            },
+            
+            printLine(msg, className) {
+                const div = document.createElement('div');
+                div.className = className;
+                div.textContent = msg;
+                UI.termOutput.appendChild(div);
+                this.scrollToBottom();
+            },
+
+            typeText(element, text, index) {
+                if (index < text.length) {
+                    element.textContent += text.charAt(index);
+                    UI.termOutput.scrollTop = UI.termOutput.scrollHeight;
+                    // Randomize typing speed slightly (15-35ms)
+                    setTimeout(() => this.typeText(element, text, index + 1), 15 + Math.random() * 20);
+                }
+            },
+
+            scrollToBottom() {
+                setTimeout(() => { UI.termOutput.scrollTop = UI.termOutput.scrollHeight; }, 10);
+            },
+            
+            clear() { UI.termOutput.innerHTML = ''; }
+        };
+
+        const ListUI = {
+            renderAgenda() {
+                UI.agendaList.innerHTML = '';
+                // Sort by time
+                AppState.agenda.sort((a,b) => a.timestamp - b.timestamp);
+                
+                if (AppState.agenda.length === 0) {
+                    UI.agendaList.innerHTML = '<div class="list-item" style="color:#777">Sem compromissos hoje.</div>';
+                    return;
+                }
+
+                AppState.agenda.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'list-item';
+                    // Check if it's past
+                    if (item.timestamp < Date.now()) div.style.opacity = '0.5';
+                    
+                    div.innerHTML = `
+                        <span class="item-title">${item.title}</span>
+                        <div class="item-meta">
+                            <span>🕒 ${item.time}</span>
+                        </div>
+                    `;
+                    UI.agendaList.appendChild(div);
+                });
+            },
+
+            renderDemands() {
+                UI.demandsList.innerHTML = '';
+                if (AppState.demands.length === 0) {
+                    UI.demandsList.innerHTML = '<div class="list-item" style="color:#777">Nenhuma demanda ativa.</div>';
+                    return;
+                }
+
+                AppState.demands.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = `list-item`;
+                    
+                    let prioClass = item.priority === 'high' ? 'prio-high' : (item.priority === 'med' ? 'prio-med' : 'prio-low');
+                    
+                    div.innerHTML = `
+                        <span class="item-title"><span class="priority-dot ${prioClass}"></span>${item.title}</span>
+                        <div class="item-meta">
+                            <span>Prazo: ${item.deadline}</span>
+                            <span>[${item.status}]</span>
+                        </div>
+                    `;
+                    UI.demandsList.appendChild(div);
+                });
+            },
+            
+            flashElement(container) {
+                const last = container.lastElementChild;
+                if(last) {
+                    last.classList.add('new-item');
+                    setTimeout(() => last.classList.remove('new-item'), 1000);
+                }
+            }
+        };
+
+        // --- COMMAND PARSER (THE BRAIN) ---
+        const Brain = {
+            process(text) {
+                Reactor.setState('PROCESSING');
+                const t = text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // remove accents
+                
+                let response = "";
+                let action = null;
+                let isAlert = false;
+
+                // 1. Greetings
+                if (t.match(/ola|bom dia|boa tarde|boa noite|jarvis/)) {
+                    const hour = new Date().getHours();
+                    let greet = "Olá";
+                    if (hour < 12) greet = "Bom dia";
+                    else if (hour < 18) greet = "Boa tarde";
+                    else greet = "Boa noite";
+                    
+                    response = `${greet}, ${AppState.name}. Sistemas online e aguardando comandos.`;
+                }
+                // 2. Time & Date
+                else if (t.match(/que horas sao|horas|hora/)) {
+                    const now = new Date();
+                    response = `São exatamente ${now.getHours()} horas e ${now.getMinutes()} minutos.`;
+                }
+                else if (t.match(/que dia e hoje|data de hoje/)) {
+                    const opt = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+                    response = `Hoje é ${new Date().toLocaleDateString('pt-BR', opt)}.`;
+                }
+                // 3. Scheduling (Simplified Regex)
+                else if (t.match(/agendar|marcar|reuniao/)) {
+                    // Try to extract title and time: "agendar [titulo] as [hora]"
+                    const match = t.match(/(?:agendar|marcar)\s+(.*?)\s+(?:as|para as|as)\s+(\d{1,2})(?:h| horas)?/);
+                    if (match) {
+                        const title = match[1].trim();
+                        const hour = parseInt(match[2]);
+                        const d = new Date();
+                        d.setHours(hour, 0, 0, 0);
+                        
+                        AppState.agenda.push({
+                            id: Date.now(), title: title, time: `${hour}:00`, timestamp: d.getTime(), notified: false
+                        });
+                        action = () => { ListUI.renderAgenda(); ListUI.flashElement(UI.agendaList); };
+                        response = `Agendado: ${title} às ${hour} horas.`;
+                    } else {
+                        response = "Entendi que deseja agendar algo, mas preciso do formato: 'agendar [compromisso] às [hora]'.";
+                    }
+                }
+                // 4. Demands / Tasks
+                else if (t.match(/adicionar demanda|nova demanda/)) {
+                    const match = t.match(/(?:demanda)\s+(.*?)\s+(?:com prazo|prazo)\s+(.*?)$/);
+                    if (match) {
+                        AppState.demands.push({
+                            id: Date.now(), title: match[1].trim(), deadline: match[2].trim(), priority: "med", status: "A fazer"
+                        });
+                        action = () => { ListUI.renderDemands(); ListUI.flashElement(UI.demandsList); };
+                        response = `Demanda '${match[1].trim()}' adicionada com prazo para ${match[2].trim()}.`;
+                    } else {
+                        response = "Para adicionar demanda, use: 'nova demanda [nome] prazo [dia]'.";
+                    }
+                }
+                // 5. System & Productivity
+                else if (t.match(/status do sistema/)) {
+                    response = `Sistemas operando normalmente. CPU em ${Math.round(AppState.metrics.cpu)}%, Memória em ${Math.round(AppState.metrics.ram)}%. Rede estável.`;
+                }
+                else if (t.match(/limpar terminal/)) {
+                    action = () => Terminal.clear();
+                    response = "Terminal limpo, senhor.";
+                }
+                else if (t.match(/ajuda|o que voce sabe fazer|comandos/)) {
+                    response = "Posso informar data/hora, 'agendar [algo] às [hora]', 'adicionar demanda [algo] prazo [dia]', relatar 'status do sistema' e 'limpar terminal'.";
+                }
+                // 6. Name configuration
+                else if (t.match(/me chame de (.*)/)) {
+                    const match = t.match(/me chame de (.*)/);
+                    if (match) {
+                        AppState.name = match[1].trim();
+                        response = `Entendido. A partir de agora chamarei o senhor de ${AppState.name}.`;
+                    }
+                }
+                // Unknown
+                else {
+                    response = `Não compreendi o comando, ${AppState.name}. Diga 'ajuda' para ver as opções.`;
+                }
+
+                // Simulate processing delay
+                setTimeout(() => {
+                    Terminal.logJarvis(response);
+                    TTS.speak(response, () => {
+                        if (action) action();
+                    });
+                    if (isAlert) triggerAlert();
+                }, 600 + Math.random() * 400);
+            }
+        };
+
+        // --- ARC REACTOR ENGINE (CANVAS) ---
+        function varColor(name) {
+            return getComputedStyle(document.documentElement).getPropertyValue(`--color-${name}`).trim();
+        }
+
+        const Reactor = {
+            canvas: null,
+            ctx: null,
+            state: 'STANDBY', // STANDBY, LISTENING, PROCESSING, SPEAKING, ALERT
+            angle: 0,
+            pulseAmount: 0,
+            pulseDir: 1,
+            
+            // Audio visualizer data
+            audioCtx: null,
+            analyser: null,
+            dataArray: null,
+            micError: false,
+
+            init() {
+                this.canvas = document.getElementById('reactor-canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+                this.loop();
+            },
+
+            resize() {
+                const rect = this.canvas.parentElement.getBoundingClientRect();
+                const size = Math.min(rect.width, rect.height) - 20; // Padding
+                
+                // Handle high DPI displays
+                const dpr = window.devicePixelRatio || 1;
+                this.canvas.width = size * dpr;
+                this.canvas.height = size * dpr;
+                this.ctx.scale(dpr, dpr);
+                this.canvas.style.width = size + 'px';
+                this.canvas.style.height = size + 'px';
+            },
+
+            setState(newState) {
+                this.state = newState;
+                
+                let text = newState;
+                UI.reactorStatus.className = 'reactor-status';
+                
+                if (newState === 'ALERT') {
+                    UI.hud.classList.add('state-alert');
+                    UI.reactorStatus.style.color = varColor('amber');
+                } else {
+                    UI.hud.classList.remove('state-alert');
+                    UI.reactorStatus.style.color = varColor('cyan');
+                }
+                
+                if(newState === 'LISTENING' && this.micError) {
+                    text = "MIC OFF";
+                }
+
+                UI.reactorStatus.innerText = text;
+            },
+
+            async setupAudio() {
+                if (this.audioCtx || this.micError) return;
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                    this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    this.analyser = this.audioCtx.createAnalyser();
+                    this.analyser.fftSize = 64; // Small size for simple bars
+                    const source = this.audioCtx.createMediaStreamSource(stream);
+                    source.connect(this.analyser);
+                    this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+                } catch (err) {
+                    console.warn("Mic access denied or unavailable for Reactor visualizer.");
+                    this.micError = true;
+                }
+            },
+
+            drawArc(cx, cy, radius, start, end, width, color, shadow = 0) {
+                this.ctx.beginPath();
+                this.ctx.arc(cx, cy, radius, start, end);
+                this.ctx.lineWidth = width;
+                this.ctx.strokeStyle = color;
+                if (shadow > 0) {
+                    this.ctx.shadowBlur = shadow;
+                    this.ctx.shadowColor = color;
+                } else {
+                    this.ctx.shadowBlur = 0;
+                }
+                this.ctx.stroke();
+                this.ctx.shadowBlur = 0; // reset
+            },
+
+            loop() {
+                const w = this.canvas.width / (window.devicePixelRatio || 1);
+                const h = this.canvas.height / (window.devicePixelRatio || 1);
+                const cx = w / 2;
+                const cy = h / 2;
+                
+                // Clear with slight trail effect
+                this.ctx.globalCompositeOperation = 'source-over';
+                this.ctx.fillStyle = 'rgba(2, 11, 20, 0.4)'; // Matches bg
+                this.ctx.fillRect(0, 0, w, h);
+                this.ctx.globalCompositeOperation = 'lighter';
+
+                this.angle += 0.02;
+                
+                // State-based variables
+                let colorBase = varColor('cyan');
+                let colorBright = varColor('blue');
+                let speedMult = 1;
+                let coreGlow = 15;
+                let volumeActivity = 0;
+
+                if (this.state === 'STANDBY') {
+                    // Pulsing idle
+                    this.pulseAmount += 0.02 * this.pulseDir;
+                    if (this.pulseAmount > 1) this.pulseDir = -1;
+                    if (this.pulseAmount < 0.2) this.pulseDir = 1;
+                    coreGlow = 10 + (this.pulseAmount * 10);
+                } 
+                else if (this.state === 'LISTENING') {
+                    colorBase = '#00ffaa'; // slightly greenish cyan
+                    if (this.analyser && !this.micError) {
+                        this.analyser.getByteFrequencyData(this.dataArray);
+                        // average volume
+                        let sum = 0;
+                        for(let i=0; i<this.dataArray.length; i++) sum += this.dataArray[i];
+                        volumeActivity = sum / this.dataArray.length / 255; 
+                        coreGlow = 20 + (volumeActivity * 30);
+                    } else {
+                        // Fake listen animation if mic broken
+                        speedMult = 1.5;
+                        coreGlow = 25;
+                    }
+                }
+                else if (this.state === 'PROCESSING') {
+                    speedMult = 4;
+                    coreGlow = 40;
+                }
+                else if (this.state === 'SPEAKING') {
+                    // Simulated envelope driven by TTS onboundary events
+                    this.pulseAmount *= 0.9; // decay
+                    volumeActivity = this.pulseAmount + (Math.random() * 0.1); // add slight jitter
+                    coreGlow = 20 + (volumeActivity * 40);
+                    speedMult = 1.2;
+                }
+                else if (this.state === 'ALERT') {
+                    colorBase = varColor('amber');
+                    colorBright = '#ffcc00';
+                    speedMult = 3;
+                    this.pulseAmount += 0.1 * this.pulseDir;
+                    if (this.pulseAmount > 1) this.pulseDir = -1;
+                    if (this.pulseAmount < 0) this.pulseDir = 1;
+                    coreGlow = 20 + (this.pulseAmount * 30);
+                }
+
+                const r = Math.min(w, h) / 2.2;
+
+                // 1. Core
+                this.ctx.beginPath();
+                this.ctx.arc(cx, cy, r * 0.15, 0, Math.PI * 2);
+                this.ctx.fillStyle = colorBright;
+                this.ctx.shadowBlur = coreGlow;
+                this.ctx.shadowColor = colorBright;
+                this.ctx.fill();
+                this.ctx.shadowBlur = 0;
+
+                // 2. Inner Ring (Solid, counter-rotate)
+                this.drawArc(cx, cy, r * 0.3, -this.angle * speedMult, Math.PI * 2 - this.angle * speedMult, 2, colorBase, coreGlow/2);
+
+                // 3. Segmented Ring
+                const segCount = 8;
+                for (let i = 0; i < segCount; i++) {
+                    let start = (i * Math.PI * 2 / segCount) + (this.angle * speedMult * 0.5);
+                    let end = start + (Math.PI * 2 / segCount) * 0.6;
+                    this.drawArc(cx, cy, r * 0.5, start, end, 8, colorBase, 5);
+                }
+
+                // 4. Outer Ring (Dashed)
+                this.ctx.setLineDash([4, 6]);
+                this.drawArc(cx, cy, r * 0.7, this.angle * speedMult * 0.8, Math.PI * 2 + this.angle * speedMult * 0.8, 3, colorBright);
+                this.ctx.setLineDash([]);
+
+                // 5. Equalizer Bars (Outer Edge)
+                const barCount = 36;
+                for (let i = 0; i < barCount; i++) {
+                    const ang = (i * Math.PI * 2 / barCount);
+                    // Dynamic length based on state
+                    let barLen = r * 0.05; 
+                    
+                    if (this.state === 'LISTENING' && volumeActivity > 0) {
+                        // Map specific frequency bins to bars if real mic
+                        let val = this.dataArray ? (this.dataArray[i % this.dataArray.length] / 255) : volumeActivity;
+                        barLen += val * (r * 0.2);
+                    } else if (this.state === 'SPEAKING') {
+                        barLen += (Math.random() * volumeActivity) * (r * 0.2);
+                    } else if (this.state === 'PROCESSING') {
+                        barLen += Math.sin(ang * 4 + this.angle * 10) * (r * 0.05) + (r * 0.05);
+                    }
+
+                    const innerR = r * 0.8;
+                    const outerR = innerR + barLen;
+
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(cx + Math.cos(ang) * innerR, cy + Math.sin(ang) * innerR);
+                    this.ctx.lineTo(cx + Math.cos(ang) * outerR, cy + Math.sin(ang) * outerR);
+                    this.ctx.lineWidth = 3;
+                    this.ctx.strokeStyle = colorBase;
+                    if(barLen > r*0.1) {
+                        this.ctx.shadowBlur = 10;
+                        this.ctx.shadowColor = colorBase;
+                    }
+                    this.ctx.stroke();
+                    this.ctx.shadowBlur = 0;
+                }
+
+                requestAnimationFrame(() => this.loop());
+            }
+        };
+
+        // --- METRICS SIMULATION ---
+        const Metrics = {
+            ctxCPU: null, ctxRAM: null, ctxHist: null,
+            
+            init() {
+                this.ctxCPU = UI.canvasCPU.getContext('2d');
+                this.ctxRAM = UI.canvasRAM.getContext('2d');
+                this.ctxHist = UI.canvasHist.getContext('2d');
+                this.fixDPI(UI.canvasCPU);
+                this.fixDPI(UI.canvasRAM);
+                this.fixDPI(UI.canvasHist);
+                
+                setInterval(() => this.update(), 1000);
+                this.draw(); // initial draw
+            },
+
+            fixDPI(canvas) {
+                const rect = canvas.getBoundingClientRect();
+                canvas.width = rect.width;
+                canvas.height = rect.height;
+            },
+
+            update() {
+                // Random walk
+                AppState.metrics.cpu += (Math.random() * 20 - 10);
+                AppState.metrics.cpu = Math.max(5, Math.min(95, AppState.metrics.cpu));
+                
+                AppState.metrics.ram += (Math.random() * 10 - 5);
+                AppState.metrics.ram = Math.max(20, Math.min(80, AppState.metrics.ram));
+
+                AppState.metrics.history.push(AppState.metrics.cpu);
+                AppState.metrics.history.shift();
+                
+                this.draw();
+                
+                // Randomly fluctuate power slightly
+                if(Math.random() > 0.8) {
+                    document.getElementById('power-val').innerText = (95 + Math.floor(Math.random()*5)) + '%';
+                }
+            },
+
+            drawGauge(ctx, value, color) {
+                const w = ctx.canvas.width;
+                const h = ctx.canvas.height;
+                const cx = w/2, cy = h/2, r = Math.min(w,h)/2 - 5;
+                
+                ctx.clearRect(0,0,w,h);
+                
+                // Bg arc
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, Math.PI*0.75, Math.PI*2.25);
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = 'rgba(0, 229, 255, 0.2)';
+                ctx.stroke();
+
+                // Value arc
+                const endAngle = Math.PI*0.75 + (value/100) * (Math.PI*1.5);
+                ctx.beginPath();
+                ctx.arc(cx, cy, r, Math.PI*0.75, endAngle);
+                ctx.lineWidth = 4;
+                ctx.strokeStyle = color;
+                ctx.shadowBlur = 5;
+                ctx.shadowColor = color;
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+
+                // Text
+                ctx.fillStyle = color;
+                ctx.font = '12px Orbitron';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(Math.round(value) + '%', cx, cy);
+            },
+
+            drawHistory() {
+                const ctx = this.ctxHist;
+                const w = ctx.canvas.width;
+                const h = ctx.canvas.height;
+                
+                ctx.clearRect(0,0,w,h);
+                ctx.beginPath();
+                
+                const step = w / (AppState.metrics.history.length - 1);
+                
+                for(let i=0; i<AppState.metrics.history.length; i++) {
+                    const x = i * step;
+                    const y = h - (AppState.metrics.history[i] / 100 * h);
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                
+                ctx.strokeStyle = varColor('cyan');
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // Fill under
+                ctx.lineTo(w, h);
+                ctx.lineTo(0, h);
+                ctx.fillStyle = 'rgba(0, 229, 255, 0.1)';
+                ctx.fill();
+            },
+
+            draw() {
+                this.drawGauge(this.ctxCPU, AppState.metrics.cpu, varColor('cyan'));
+                this.drawGauge(this.ctxRAM, AppState.metrics.ram, varColor('blue'));
+                this.drawHistory();
+            }
+        };
+
+        // --- CLOCK & REMINDERS ---
+        function updateClock() {
+            const now = new Date();
+            UI.clockTime.innerText = now.toLocaleTimeString('pt-BR');
+            // update date only occasionally or on init
+            
+            // Check Reminders
+            AppState.agenda.forEach(item => {
+                if (!item.notified) {
+                    const diff = item.timestamp - now.getTime();
+                    // Alert if within 15 mins (900000 ms) and hasn't passed
+                    if (diff > 0 && diff <= 900000) {
+                        item.notified = true;
+                        triggerAlert(`Lembrete: ${item.title} começa em ${Math.round(diff/60000)} minutos.`);
+                    }
+                }
+            });
+        }
+
+        function triggerAlert(msg = "Alerta do Sistema") {
+            Reactor.setState('ALERT');
+            Terminal.logSys(`[ALERTA] ${msg}`);
+            TTS.speak(msg, () => {
+                if(!AppState.systemActive) Reactor.setState('STANDBY');
+                else Reactor.setState('LISTENING');
+            });
+        }
+
+        // --- BOOT SEQUENCE & EVENTS ---
+        
+        function updateListenButton() {
+            if (AppState.systemActive) {
+                UI.btnToggleListen.innerText = "DESATIVAR";
+                UI.btnToggleListen.classList.add('active-btn');
+            } else {
+                UI.btnToggleListen.innerText = "ATIVAR JARVIS";
+                UI.btnToggleListen.classList.remove('active-btn');
+            }
+        }
+
+        function toggleSystem() {
+            AppState.systemActive = !AppState.systemActive;
+            updateListenButton();
+
+            if (AppState.systemActive) {
+                Reactor.setupAudio(); // Initialize audio context on user gesture
+                Terminal.logSys("Iniciando módulos auditivos...");
+                VoiceRec.start();
+                if(!TTS.isSpeaking) TTS.speak("Sistemas ativados. Como posso ajudar?");
+            } else {
+                VoiceRec.stop();
+                Terminal.logSys("Módulos auditivos em repouso.");
+                Reactor.setState('STANDBY');
+            }
+        }
+
+        function initApp() {
+            // Setup Listeners
+            UI.btnToggleListen.addEventListener('click', toggleSystem);
+            
+            UI.btnSettings.addEventListener('click', () => {
+                UI.settingsPanel.classList.toggle('open');
+            });
+
+            UI.termInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && UI.termInput.value.trim() !== '') {
+                    const cmd = UI.termInput.value.trim();
+                    Terminal.logUser(cmd);
+                    AppState.commandHistory.push(cmd);
+                    AppState.historyIndex = AppState.commandHistory.length;
+                    Brain.process(cmd);
+                    UI.termInput.value = '';
+                } else if (e.key === 'ArrowUp') {
+                    if (AppState.historyIndex > 0) {
+                        AppState.historyIndex--;
+                        UI.termInput.value = AppState.commandHistory[AppState.historyIndex];
+                    }
+                } else if (e.key === 'ArrowDown') {
+                    if (AppState.historyIndex < AppState.commandHistory.length - 1) {
+                        AppState.historyIndex++;
+                        UI.termInput.value = AppState.commandHistory[AppState.historyIndex];
+                    } else {
+                        AppState.historyIndex = AppState.commandHistory.length;
+                        UI.termInput.value = '';
+                    }
+                }
+            });
+
+            // Initialize Modules
+            TTS.init();
+            VoiceRec.init();
+            Reactor.init();
+            Metrics.init();
+            
+            // Set initial Date
+            const opt = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+            UI.clockDate.innerText = new Date().toLocaleDateString('pt-BR', opt);
+            setInterval(updateClock, 1000);
+
+            // Render mock data
+            ListUI.renderAgenda();
+            ListUI.renderDemands();
+        }
+
+        // Boot Animation
+        window.onload = () => {
+            const bootMsgs = [
+                "J.A.R.V.I.S. SYSTEM BOOT v4.2",
+                "Carregando kernel principal... OK",
+                "Inicializando interface holográfica... OK",
+                "Conectando rede neural linguística (pt-BR)... OK",
+                "Calibrando reator central... OK",
+                "Bem-vindo."
+            ];
+            
+            let delay = 500;
+            bootMsgs.forEach((msg, idx) => {
+                setTimeout(() => {
+                    UI.bootLog.innerHTML += msg + "<br>";
+                }, delay);
+                delay += 400 + Math.random() * 300;
+            });
+
+            setTimeout(() => {
+                UI.bootScreen.style.opacity = '0';
+                setTimeout(() => {
+                    UI.bootScreen.style.display = 'none';
+                    UI.hud.classList.add('active');
+                    initApp();
+                    Terminal.logSys("Sistema operacional J.A.R.V.I.S. inicializado. Pressione ATIVAR para usar comandos de voz.");
+                }, 1000);
+            }, delay + 500);
+        };
+
+    </script>
+</body>
+</html>
